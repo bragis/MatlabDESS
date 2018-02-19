@@ -1,0 +1,78 @@
+
+% Function wu_buxton
+%  
+%  Outputs first and second echo amplitudes from FADE simulations
+%  based on the equations described by Wu and Buxton in JMR 90:243-253, 1990
+% 
+%     Matlab code adapted from C code written by Ernesto Staroswiecki
+%
+%  [e_p,e_m] = computeEchosWuBuxton(flip_angle,TR,G,Tg,G_del,TE1,TE2,T1,T2,D)
+%  
+%     Outputs:
+%             e_p:		FISP echo amplitude
+%             e_m:    PSIF echo amplitude
+%  
+%     Inputs:
+%             flip_angle:		Flip angle					(degrees)
+%             TR:				Repetition time				(sec)
+%             Grad_amp:			Spoiler gradient amplitude	(G/m)
+%             Grad_dur:			Spoiler gradient duration	(sec)
+%             Grad_del:			Spoiler gradient delay		(sec)
+%             TE1:				FISP echo time				(sec)
+%             TE2:				PSIF echo time				(sec)
+%             T1:				T1							(sec)
+%             T2:				T2							(sec)
+%             D:				Diffusion coefficient		(m^2/sec)
+
+function [e_p,e_m] = computeEchosWuBuxton(flip_angle,TR,G,Tg,G_del,TE1,TE2,T1,T2,D)
+
+% Initial values
+M_0 = 1.0;
+flip_rad = flip_angle*pi/180;
+gamma = 4258*2*pi;
+
+gamma_G_tau = gamma*G*Tg;
+gamma_G_tau_SQ = gamma_G_tau^2;
+
+
+% 'H2' values (0, -1 and -2)
+H2_0 = exp(D*gamma_G_tau_SQ*(Tg*(2.0/3.0-0.0)+G_del*(1.0-0.0)));
+H2_m1 = exp(D*gamma_G_tau_SQ*(Tg*(2.0/3.0-1.0)+G_del*(1.0-2.0)));
+H2_m2 = exp(D*gamma_G_tau_SQ*(Tg*(2.0/3.0-2.0)+G_del*(1.0-4.0)));
+
+% 'E1' values (0 and 1)
+E1_0 = exp(-1.0*TR*(1.0/T1));
+E1_1 = exp(-1.0*TR*((1.0/T1)+D*gamma_G_tau_SQ));
+
+% 'E ++ 2' values (0, -1, and -2)
+E_pp_2_0 = H2_0 * exp(-1.0*TR*((1.0/T2)+D*gamma_G_tau_SQ));
+E_pp_2_m1 = H2_m1 * exp(-1.0*TR*((1.0/T2)));
+E_pp_2_m2 = H2_m2 * exp(-1.0*TR*((1.0/T2)+D*gamma_G_tau_SQ));
+
+% 'F' values
+F_B_num = 1.0- E1_1*cos(flip_rad) - E_pp_2_0*E_pp_2_m2*(E1_1-cos(flip_rad));
+F_b_den = E_pp_2_m2*(cos(flip_rad)+1.0)*(1.0-E1_1);
+F_b = F_B_num/F_b_den;
+F_c = E_pp_2_0/E_pp_2_m2;
+
+% 'K' and 'A' values, plus solving for 'F_1'
+K = F_b;
+A_2_SQ = F_c;
+F_1 = K - sqrt(abs(K*K-A_2_SQ));
+
+% 'r' and 's' values
+r = 1.0 - E1_0*cos(flip_rad) + E_pp_2_0*E_pp_2_m1*(cos(flip_rad)-E1_0);
+s = E_pp_2_m2*(1.0-E1_0*cos(flip_rad)) + E_pp_2_m1*(cos(flip_rad)-E1_0);
+
+% 'b' values (0 and -1)
+b_0_num = M_0*(1.0-E1_0)*(1.0-F_1*E_pp_2_m2)*sin(flip_rad);
+b_0_den = r - F_1*s;
+b_0 = b_0_num/b_0_den;
+
+b_m1_num = M_0*(1.0-E1_0)*(F_1-E_pp_2_0)*sin(flip_rad);
+b_m1_den = b_0_den;
+b_m1 = b_m1_num/b_m1_den;
+
+% Put results out
+e_p = b_0*exp(-TE1/T2);
+e_m = b_m1*E_pp_2_m1*exp((2.0*TR-TE2)/T2);
